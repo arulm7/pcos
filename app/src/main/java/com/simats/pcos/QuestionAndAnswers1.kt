@@ -95,12 +95,14 @@ class QuestionAndAnswers1 : ComponentActivity() {
             Request.Method.POST, url, postData,
             { response ->
                 try {
-                    if (response.has("success")) {
+                    val isSuccess = response.optBoolean("success", false) || response.optString("status") == "success"
+                    if (isSuccess) {
                         navigateToResultActivity()
                     } else {
+                        val errorMsg = response.optString("message", response.optString("error", "Unknown error"))
                         Toast.makeText(
                             this,
-                            "Failed: " + response.optString("error", "Unknown error"),
+                            "Failed: $errorMsg",
                             Toast.LENGTH_LONG
                         ).show()
                     }

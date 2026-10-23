@@ -1,7 +1,6 @@
 package com.simats.pcos
 
 import android.os.Bundle
-import android.widget.ImageView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -9,16 +8,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.bumptech.glide.Glide
+import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 
 class ImageViewerActivity : ComponentActivity() {
 
@@ -26,11 +29,12 @@ class ImageViewerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val imageUrl = intent.getStringExtra("image_url") ?: ""
+        val rawUrl = intent.getStringExtra("image_url") ?: ""
+        val normalizedUrl = ImageHelper.normalizeImageUrl(rawUrl) ?: rawUrl
 
         setContent {
             ImageViewerScreen(
-                imageUrl = imageUrl,
+                imageUrl = normalizedUrl,
                 onClose = { finish() }
             )
         }
@@ -43,6 +47,9 @@ fun ImageViewerScreen(
     imageUrl: String,
     onClose: () -> Unit
 ) {
+    var isLoading by remember { mutableStateOf(imageUrl.isNotEmpty()) }
+    var isError by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -77,26 +84,62 @@ fun ImageViewerScreen(
             contentAlignment = Alignment.Center
         ) {
             if (imageUrl.isNotEmpty()) {
-                AndroidView(
-                    factory = { context ->
-                        ImageView(context).apply {
-                            layoutParams = android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            scaleType = ImageView.ScaleType.FIT_CENTER
-                            adjustViewBounds = true
-                        }
+                val context = LocalContext.current
+                val request = remember(imageUrl) {
+                    ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .build()
+                }
+
+                AsyncImage(
+                    model = request,
+                    contentDescription = "Medical Report Document",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                    onLoading = {
+                        isLoading = true
+                        isError = false
                     },
-                    update = { imageView ->
-                        Glide.with(imageView.context)
-                            .load(imageUrl)
-                            .placeholder(R.drawable.pic1)
-                            .error(R.drawable.pic1)
-                            .into(imageView)
+                    onSuccess = {
+                        isLoading = false
+                        isError = false
                     },
-                    modifier = Modifier.fillMaxSize()
+                    onError = {
+                        isLoading = false
+                        isError = true
+                    }
                 )
+
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+
+                if (isError) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BrokenImage,
+                            contentDescription = "Error loading image",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Failed to load document",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             } else {
                 Text(
                     text = "No image URL provided",

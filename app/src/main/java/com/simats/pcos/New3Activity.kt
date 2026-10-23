@@ -93,7 +93,7 @@ fun WellnessFeedbackScreen(
                     put("meditation_percentage", meditationPercentage.toInt().toString())
                 }
 
-                val url = URL(IpV4Connection.getUrl("health_followA.php"))
+                val url = URL(IpV4Connection.getUrl("health_follow.php"))
                 val connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")

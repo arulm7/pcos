@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AlertDialog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,8 +14,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,27 +29,41 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.android.volley.Request
+import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.Volley
+import org.json.JSONObject
 
 class PatientHome : ComponentActivity() {
+
+    private var username by mutableStateOf("")
+    private var profileImageUrl by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
-        val username = intent.getStringExtra("username") ?: ""
+
+        val rawName = intent.getStringExtra("username")
+            ?: intent.getStringExtra("patient_name")
+            ?: SessionManager.getUsername(this)
+
+        username = rawName.trim()
+
+        if (username.isNotEmpty()) {
+            fetchPatientProfileImage(username)
+        }
 
         setContent {
             PatientHomeContent(
                 username = username,
+                profileImageUrl = profileImageUrl,
                 onNavigate = { destination ->
-                    val intent = Intent(this, destination)
-                    intent.putExtra("username", username)
-                    intent.putExtra("patient_name", username)
+                    val intent = Intent(this, destination).apply {
+                        putExtra("username", username)
+                        putExtra("patient_name", username)
+                    }
                     startActivity(intent)
                 },
                 onLogoutClick = {
@@ -54,14 +73,42 @@ class PatientHome : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (username.isNotEmpty()) {
+            fetchPatientProfileImage(username)
+        }
+    }
+
+    private fun fetchPatientProfileImage(name: String) {
+        val url = IpV4Connection.getUrl("profile.php?name=") + name
+        val stringRequest = StringRequest(
+            Request.Method.GET, url,
+            { response ->
+                try {
+                    val cleanResponse = IpV4Connection.cleanJsonResponse(response)
+                    val jsonResponse = JSONObject(cleanResponse)
+                    if (jsonResponse.optBoolean("success", false) || jsonResponse.has("patient_details")) {
+                        val details = jsonResponse.getJSONObject("patient_details")
+                        val img = details.optString("profile_image", "").takeIf { it.isNotBlank() }
+                        profileImageUrl = img
+                    }
+                } catch (_: Exception) {}
+            },
+            { /* silent fallback to avatar initials */ }
+        )
+        Volley.newRequestQueue(this).add(stringRequest)
+    }
+
     private fun confirmLogout() {
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Logout")
             .setMessage("Are you sure you want to logout?")
-            .setPositiveButton("OK") { _, _ ->
+            .setPositiveButton("Logout") { _, _ ->
                 SessionManager.clearSession(this)
-                val intent = Intent(this, RollSelection::class.java)
-                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                val intent = Intent(this, RollSelection::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
                 startActivity(intent)
                 finish()
             }
@@ -75,6 +122,7 @@ class PatientHome : ComponentActivity() {
 @Composable
 fun PatientHomeContent(
     username: String,
+    profileImageUrl: String? = null,
     onNavigate: (Class<*>) -> Unit,
     onLogoutClick: () -> Unit
 ) {
@@ -92,19 +140,19 @@ fun PatientHomeContent(
                     .padding(horizontal = 16.dp, vertical = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.profile),
-                    contentDescription = "Profile",
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .clickable { onNavigate(PatientProfile::class.java) }
+                ProfileAvatar(
+                    imageUrl = profileImageUrl,
+                    name = username,
+                    size = 50.dp,
+                    borderWidth = 2.dp,
+                    borderColor = PcosPrimaryPink,
+                    onClick = { onNavigate(PatientProfile::class.java) }
                 )
-                
+
                 Spacer(modifier = Modifier.width(16.dp))
-                
+
                 Text(
-                    text = username,
+                    text = username.ifEmpty { "Patient" },
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.Black,
@@ -136,7 +184,7 @@ fun PatientHomeContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Default.TrendingUp,
+                        imageVector = Icons.AutoMirrored.Filled.TrendingUp,
                         contentDescription = null,
                         tint = Color(0xFFB80257),
                         modifier = Modifier.size(32.dp)
@@ -164,7 +212,7 @@ fun PatientHomeContent(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            
+
             Text(
                 text = "Dashboard",
                 fontSize = 24.sp,
@@ -256,7 +304,7 @@ fun DashboardCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)) // @color/lightWhite
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),

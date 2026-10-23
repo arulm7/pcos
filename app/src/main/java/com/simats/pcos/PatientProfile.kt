@@ -1,5 +1,6 @@
 package com.simats.pcos
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -8,48 +9,58 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.android.volley.Request
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import org.json.JSONObject
 
-import android.content.Intent
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Edit
-
 class PatientProfile : ComponentActivity() {
 
     private var profileData by mutableStateOf<ProfileData?>(null)
+    private var isLoading by mutableStateOf(false)
+    private var errorMessage by mutableStateOf<String?>(null)
     private var currentUsername: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        currentUsername = intent.getStringExtra("username") ?: intent.getStringExtra("patient_name") ?: ""
+        val rawName = intent.getStringExtra("username")
+            ?: intent.getStringExtra("patient_name")
+            ?: SessionManager.getUsername(this)
+
+        currentUsername = rawName.trim()
+
         if (currentUsername.isNotEmpty()) {
             fetchPatientDetails(currentUsername)
+        } else {
+            errorMessage = "No patient identifier found"
         }
 
         setContent {
-            PatientProfileContent(
+            PatientProfileScreen(
                 profileData = profileData,
+                username = currentUsername,
+                isLoading = isLoading,
+                errorMessage = errorMessage,
                 onBackClick = { finish() },
+                onRefresh = {
+                    if (currentUsername.isNotEmpty()) fetchPatientDetails(currentUsername)
+                },
                 onEditClick = {
                     val intent = Intent(this@PatientProfile, PatientEditProfileActivity::class.java).apply {
                         putExtra("username", currentUsername)
@@ -69,21 +80,24 @@ class PatientProfile : ComponentActivity() {
     }
 
     private fun fetchPatientDetails(name: String) {
+        isLoading = true
+        errorMessage = null
         val url = IpV4Connection.getUrl("profile.php?name=") + name
         val queue = Volley.newRequestQueue(this)
 
         val stringRequest = StringRequest(
             Request.Method.GET, url,
             { response ->
+                isLoading = false
                 try {
                     val cleanResponse = IpV4Connection.cleanJsonResponse(response)
                     val jsonResponse = JSONObject(cleanResponse)
-                    if (jsonResponse.getBoolean("success")) {
+                    if (jsonResponse.optBoolean("success", false) || jsonResponse.has("patient_details")) {
                         val details = jsonResponse.getJSONObject("patient_details")
-                        
+
                         profileData = ProfileData(
-                            name = details.optString("name", ""),
-                            age = details.optInt("age", 0).toString(),
+                            name = details.optString("name", name),
+                            age = details.optInt("age", 0).let { if (it > 0) it.toString() else details.optString("age", "") },
                             mobileNo = details.optString("Mobile_No", ""),
                             height = details.optString("height", ""),
                             weight = details.optString("weight", ""),
@@ -97,14 +111,16 @@ class PatientProfile : ComponentActivity() {
                             profileImage = details.optString("profile_image", "")
                         )
                     } else {
-                        Toast.makeText(this, jsonResponse.getString("message"), Toast.LENGTH_LONG).show()
+                        val msg = jsonResponse.optString("message", "Could not load patient details")
+                        errorMessage = msg
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(this, "Error parsing response", Toast.LENGTH_LONG).show()
+                    errorMessage = "Error parsing profile data: ${e.message}"
                 }
             },
             { error ->
-                Toast.makeText(this, "Failed to fetch data: ${error.message}", Toast.LENGTH_LONG).show()
+                isLoading = false
+                errorMessage = "Failed to load profile: ${error.message ?: "Network error"}"
             }
         )
         queue.add(stringRequest)
@@ -129,9 +145,13 @@ data class ProfileData(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PatientProfileContent(
+fun PatientProfileScreen(
     profileData: ProfileData?,
+    username: String,
+    isLoading: Boolean,
+    errorMessage: String?,
     onBackClick: () -> Unit = {},
+    onRefresh: () -> Unit = {},
     onEditClick: () -> Unit = {}
 ) {
     Scaffold(
@@ -139,9 +159,9 @@ fun PatientProfileContent(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Profile",
+                        text = "Patient Profile",
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
+                        color = PcosTextPrimary
                     )
                 },
                 navigationIcon = {
@@ -149,135 +169,184 @@ fun PatientProfileContent(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color(0xFF1E293B)
+                            tint = PcosTextPrimary
                         )
                     }
                 },
                 actions = {
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = PcosTextSecondary
+                        )
+                    }
                     IconButton(onClick = onEditClick) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Edit Profile",
-                            tint = Color(0xFFEB7DB2)
+                            tint = PcosPrimaryPink
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         },
-        containerColor = Color.White
+        containerColor = PcosBackground
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            when {
+                isLoading && profileData == null -> {
+                    LoadingContent(
+                        message = "Loading profile...",
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                errorMessage != null && profileData == null -> {
+                    ErrorStateContent(
+                        errorMessage = errorMessage,
+                        onRetry = onRefresh,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                else -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Spacer(modifier = Modifier.height(20.dp))
 
-            val imageUrl = profileData?.profileImage?.takeIf { it.isNotEmpty() }
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                AndroidView(
-                    factory = { context ->
-                        android.widget.ImageView(context).apply {
-                            layoutParams = android.view.ViewGroup.LayoutParams(
-                                300, 300 // Approximately 100dp depending on density, but better to set exact dp in Compose
-                            )
+                        // Profile Avatar using shared modern component
+                        ProfileAvatar(
+                            imageUrl = profileData?.profileImage,
+                            name = profileData?.name?.ifEmpty { username } ?: username,
+                            size = 110.dp,
+                            borderWidth = 3.dp,
+                            borderColor = PcosPrimaryPink
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = profileData?.name?.ifEmpty { username } ?: username,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PcosTextPrimary
+                        )
+
+                        Text(
+                            text = "Patient Roster",
+                            fontSize = 13.sp,
+                            color = PcosTextSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Profile Details Section Card
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp)
+                            ) {
+                                Text(
+                                    text = "Personal Information",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PcosTextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                ProfileInfoRow("Full Name", profileData?.name?.ifEmpty { "-" } ?: "-")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Age", profileData?.age?.ifEmpty { "-" } ?: "-")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Mobile Number", profileData?.mobileNo?.ifEmpty { "-" } ?: "-")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Any Other Disease", profileData?.otherDisease?.ifEmpty { "None" } ?: "None")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Obstetric Score", profileData?.obstetricScore?.ifEmpty { "-" } ?: "-")
+                            }
                         }
-                    },
-                    update = { imageView ->
-                        if (imageUrl != null) {
-                            com.bumptech.glide.Glide.with(imageView.context)
-                                .load(imageUrl)
-                                .apply(com.bumptech.glide.request.RequestOptions.circleCropTransform())
-                                .placeholder(R.drawable.icon_profile)
-                                .error(R.drawable.icon_profile)
-                                .into(imageView)
-                        } else {
-                            imageView.setImageResource(R.drawable.group35)
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Body & Health Metrics Card
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp)
+                            ) {
+                                Text(
+                                    text = "Physical & Biometric Metrics",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PcosTextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(14.dp))
+                                ProfileInfoRow("Height", "${profileData?.height?.ifEmpty { "-" }} cm")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Weight", "${profileData?.weight?.ifEmpty { "-" }} kg")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("BMI", profileData?.bmi?.ifEmpty { "-" } ?: "-")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Hip", "${profileData?.hip?.ifEmpty { "-" }} cm")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Waist", "${profileData?.waist?.ifEmpty { "-" }} cm")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Hip-Waist Ratio", profileData?.hipWaist?.ifEmpty { "-" } ?: "-")
+                                HorizontalDivider(color = Color(0xFFF1F5F9), modifier = Modifier.padding(vertical = 8.dp))
+                                ProfileInfoRow("Central Obesity", profileData?.centralObesity?.ifEmpty { "-" } ?: "-")
+                            }
                         }
-                    },
-                    modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape)
-                        .background(Color.LightGray, CircleShape)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            ) {
-                ProfileField("Name", profileData?.name ?: "")
-                ProfileField("Age", profileData?.age ?: "")
-                ProfileField("Mobile Number", profileData?.mobileNo ?: "")
-                ProfileField("Height", profileData?.height ?: "")
-                ProfileField("Weight", profileData?.weight ?: "")
-                ProfileField("BMI", profileData?.bmi ?: "")
-                ProfileField("Any other disease", profileData?.otherDisease ?: "")
-                ProfileField("Obstetric Score", profileData?.obstetricScore ?: "")
-                ProfileField("Hip (cm)", profileData?.hip ?: "")
-                ProfileField("Waist (cm)", profileData?.waist ?: "")
-                ProfileField("Hip Waist Ratio", profileData?.hipWaist ?: "")
-                ProfileField("Central Obesity", profileData?.centralObesity ?: "")
-                
-                Spacer(modifier = Modifier.height(20.dp))
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun ProfileField(label: String, value: String) {
+fun ProfileInfoRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp),
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            fontSize = 16.sp,
-            color = Color.Black,
+            fontSize = 14.sp,
+            color = PcosTextSecondary,
             modifier = Modifier.weight(1f)
         )
-        
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            modifier = Modifier
-                .width(180.dp)
-                .height(50.dp),
-            textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, color = Color.Black),
-            singleLine = true
+        Text(
+            text = value,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PcosTextPrimary
         )
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun PatientProfileContentPreview() {
-    PatientProfileContent(
-        profileData = ProfileData(
-            name = "John Doe",
-            age = "25",
-            mobileNo = "1234567890",
-            height = "175",
-            weight = "70",
-            bmi = "22.8",
-            otherDisease = "None",
-            obstetricScore = "0",
-            hip = "90",
-            waist = "80",
-            hipWaist = "0.88",
-            centralObesity = "No"
-        )
-    )
 }

@@ -70,7 +70,8 @@ class LeaderBoard : ComponentActivity() {
                         val score: JSONObject = topScores.getJSONObject(i)
                         val name: String = score.optString("Name", "Anonymous")
                         val totalScore: Int = score.optInt("Totalscore", 0)
-                        val profileImage: String = score.optString("ProfileImage", "")
+                        val rawImg = score.optString("ProfileImage", "")
+                        val profileImage: String = ImageHelper.normalizeImageUrl(rawImg) ?: ""
                         entries.add(LeaderboardEntry(name, totalScore, profileImage))
                     }
                 } catch (e: Exception) {
@@ -122,7 +123,8 @@ class LeaderBoard2 : ComponentActivity() {
                         val score: JSONObject = topScores.getJSONObject(i)
                         val name: String = score.optString("Name", "Anonymous")
                         val totalScore: Int = score.optInt("Totalscore", 0)
-                        val profileImage: String = score.optString("ProfileImage", "")
+                        val rawImg = score.optString("ProfileImage", "")
+                        val profileImage: String = ImageHelper.normalizeImageUrl(rawImg) ?: ""
                         entries.add(LeaderboardEntry(name, totalScore, profileImage))
                     }
                 } catch (e: Exception) {
@@ -272,43 +274,12 @@ fun LeaderboardCard(rank: Int, entry: LeaderboardEntry) {
             Spacer(modifier = Modifier.width(14.dp))
 
             // User Avatar
-            if (!entry.profileImage.isNullOrEmpty()) {
-                AndroidView(
-                    factory = { context ->
-                        android.widget.ImageView(context).apply {
-                            layoutParams = android.view.ViewGroup.LayoutParams(
-                                120, 120
-                            )
-                        }
-                    },
-                    update = { imageView ->
-                        Glide.with(imageView.context)
-                            .load(entry.profileImage)
-                            .apply(RequestOptions.circleCropTransform())
-                            .placeholder(R.drawable.icon_profile)
-                            .error(R.drawable.icon_profile)
-                            .into(imageView)
-                    },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFF1F5F9)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            }
+            ProfileAvatar(
+                imageUrl = entry.profileImage,
+                name = entry.name,
+                size = 44.dp,
+                borderColor = Color(0xFFEB7DB2)
+            )
 
             Spacer(modifier = Modifier.width(14.dp))
 

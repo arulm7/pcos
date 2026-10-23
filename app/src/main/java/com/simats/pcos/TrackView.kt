@@ -191,6 +191,7 @@ class TrackView : ComponentActivity() {
 
     private fun updatePieCharts(jsonResponse: JSONObject) {
         runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
             try {
                 if (jsonResponse.getBoolean("success")) {
                     val percentages = jsonResponse.getJSONObject("percentages")

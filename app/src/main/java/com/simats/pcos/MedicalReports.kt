@@ -96,7 +96,7 @@ class MedicalReports : ComponentActivity() {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val jsonResponse = response.body()?.string() ?: ""
+                val jsonResponse = response.body?.string() ?: ""
                 runOnUiThread { 
                     isLoading = false
                     if (response.isSuccessful) {
@@ -122,8 +122,10 @@ class MedicalReports : ComponentActivity() {
                     for (i in 0 until jsonArray.length()) {
                         val record = jsonArray.getJSONObject(i)
                         val rawPath = record.optString("record_path", "")
-                        val fullPath = if (rawPath.startsWith("http")) rawPath else IpV4Connection.getBaseUrl() + rawPath
-                        newRecords.add(MedicalRecord(fullPath))
+                        val fullPath = ImageHelper.normalizeImageUrl(rawPath) ?: ""
+                        if (fullPath.isNotEmpty()) {
+                            newRecords.add(MedicalRecord(fullPath))
+                        }
                     }
                 }
                 records = newRecords
@@ -227,24 +229,15 @@ fun MedicalRecordItem(
         elevation = CardDefaults.cardElevation(4.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
-        AndroidView(
-            factory = { context ->
-                android.widget.ImageView(context).apply {
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                }
-            },
-            update = { imageView ->
-                Glide.with(imageView.context)
-                    .load(imageUrl)
-                    .centerCrop()
-                    .placeholder(R.drawable.pic1) // Fallback placeholder
-                    .error(R.drawable.pic1) // Fallback error
-                    .into(imageView)
-            },
+        coil.compose.AsyncImage(
+            model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                .data(imageUrl)
+                .crossfade(true)
+                .placeholder(R.drawable.pic1)
+                .error(R.drawable.pic1)
+                .build(),
+            contentDescription = "Medical Report",
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
     }

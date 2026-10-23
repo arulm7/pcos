@@ -86,7 +86,7 @@ fun DoctorPatientCalendarScreen(
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val rawBody = response.body()?.string() ?: ""
+                val rawBody = response.body?.string() ?: ""
                 val clean = IpV4Connection.cleanJsonResponse(rawBody)
                 (context as? ComponentActivity)?.runOnUiThread {
                     isLoading = false

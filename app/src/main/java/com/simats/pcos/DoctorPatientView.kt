@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,18 +36,23 @@ import org.json.JSONObject
 class DoctorPatientView : ComponentActivity() {
 
     private var patientName by mutableStateOf("")
+    private var patientProfileImage by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         patientName = intent.getStringExtra("patient_name") ?: ""
+        if (patientName.isNotEmpty()) {
+            fetchPatientProfile(patientName)
+        }
 
         setContent {
             var showDeleteDialog by remember { mutableStateOf(false) }
 
             DoctorPatientViewScreen(
                 patientName = patientName,
+                patientProfileImage = patientProfileImage,
                 onBackClick = { finish() },
                 onNavigate = { destination ->
                     val intent = Intent(this, destination)
@@ -125,12 +130,33 @@ class DoctorPatientView : ComponentActivity() {
         )
         queue.add(stringRequest)
     }
+
+    private fun fetchPatientProfile(name: String) {
+        val url = IpV4Connection.getUrl("profile.php?name=") + name
+        val request = StringRequest(
+            Request.Method.GET, url,
+            { response ->
+                try {
+                    val clean = IpV4Connection.cleanJsonResponse(response)
+                    val json = JSONObject(clean)
+                    if (json.optBoolean("success", false) || json.has("patient_details")) {
+                        val details = json.getJSONObject("patient_details")
+                        val img = details.optString("profile_image", "").takeIf { it.isNotBlank() }
+                        patientProfileImage = ImageHelper.normalizeImageUrl(img)
+                    }
+                } catch (_: Exception) {}
+            },
+            { /* silent */ }
+        )
+        Volley.newRequestQueue(this).add(request)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DoctorPatientViewScreen(
     patientName: String,
+    patientProfileImage: String? = null,
     onBackClick: () -> Unit,
     onNavigate: (Class<*>) -> Unit,
     onDeleteClick: () -> Unit
@@ -191,20 +217,13 @@ fun DoctorPatientViewScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.25f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
+                    ProfileAvatar(
+                        imageUrl = patientProfileImage,
+                        name = patientName,
+                        size = 60.dp,
+                        borderWidth = 2.dp,
+                        borderColor = Color.White.copy(alpha = 0.8f)
+                    )
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(
@@ -250,7 +269,7 @@ fun DoctorPatientViewScreen(
                     DoctorActionCard(
                         title = "Today's Progress",
                         subtitle = "Steps, calories, sleep",
-                        icon = Icons.Default.TrendingUp,
+                        icon = Icons.AutoMirrored.Filled.TrendingUp,
                         accentColor = Color(0xFF10B981),
                         onClick = { onNavigate(TodayProgressDoctor::class.java) }
                     )

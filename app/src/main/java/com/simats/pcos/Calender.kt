@@ -77,7 +77,7 @@ class Calender : ComponentActivity() {
         }
 
         val request = Request.Builder()
-            .url(IpV4Connection.getUrl("calenderA.php"))
+            .url(IpV4Connection.getUrl("calender.php"))
             .post(formBuilder.build())
             .build()
 
@@ -122,7 +122,7 @@ fun PatientCalendarScreen(
         errorMessage = null
         val body = FormBody.Builder().add("name", username).build()
         val request = Request.Builder()
-            .url(IpV4Connection.getUrl("calenderDA.php"))
+            .url(IpV4Connection.getUrl("calenderD.php"))
             .post(body)
             .build()
 
@@ -135,7 +135,7 @@ fun PatientCalendarScreen(
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val rawBody = response.body()?.string() ?: ""
+                val rawBody = response.body?.string() ?: ""
                 val clean = IpV4Connection.cleanJsonResponse(rawBody)
                 (context as? ComponentActivity)?.runOnUiThread {
                     isLoading = false

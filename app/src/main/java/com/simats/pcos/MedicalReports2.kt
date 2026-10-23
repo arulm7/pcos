@@ -32,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import java.io.IOException
 
@@ -94,8 +96,8 @@ fun UploadMedicalReportScreen(
                     return@launch
                 }
 
-                val mediaType = MediaType.parse("application/octet-stream")
-                val fileBody = RequestBody.create(mediaType, file)
+                val mediaType = "application/octet-stream".toMediaTypeOrNull()
+                val fileBody = file.asRequestBody(mediaType)
                 val requestBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("image", file.name, fileBody)
@@ -116,7 +118,7 @@ fun UploadMedicalReportScreen(
                         Toast.makeText(context, "Report uploaded successfully!", Toast.LENGTH_LONG).show()
                         selectedUri = null
                     } else {
-                        Toast.makeText(context, "Upload failed: ${response.message()}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Upload failed: ${response.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {

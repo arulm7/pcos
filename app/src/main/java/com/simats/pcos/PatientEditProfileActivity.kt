@@ -114,8 +114,9 @@ class PatientEditProfileActivity : ComponentActivity() {
                             map["centralobesity"] = details.optString("centralobesity", "")
 
                             val img = details.optString("profile_image", "").takeIf { it.isNotBlank() }
-                            profileImageUrl = img
-                            onLoaded(map, img)
+                            val normalized = ImageHelper.normalizeImageUrl(img)
+                            profileImageUrl = normalized
+                            onLoaded(map, normalized)
                         } else {
                             Toast.makeText(applicationContext, jsonResponse.optString("message", "Could not fetch details"), Toast.LENGTH_SHORT).show()
                         }
@@ -134,7 +135,7 @@ class PatientEditProfileActivity : ComponentActivity() {
     }
 
     private fun uploadImage(imageUri: Uri, username: String) {
-        val url = IpV4Connection.getUrl("profileimageA.php")
+        val url = IpV4Connection.getUrl("profileimage.php")
         val base64 = imageToBase64(imageUri) ?: return
 
         val imageUploadRequest = object : StringRequest(
@@ -143,11 +144,15 @@ class PatientEditProfileActivity : ComponentActivity() {
                 try {
                     val clean = IpV4Connection.cleanJsonResponse(response)
                     val jsonResponse = JSONObject(clean)
-                    if (jsonResponse.getBoolean("success")) {
+                    val isSuccess = jsonResponse.optBoolean("success", false) ||
+                            jsonResponse.optString("status") == "success" ||
+                            jsonResponse.has("image_url")
+                    if (isSuccess) {
                         Toast.makeText(applicationContext, jsonResponse.optString("message", "Image uploaded successfully!"), Toast.LENGTH_LONG).show()
-                        profileImageUrl = if (jsonResponse.has("image_url")) jsonResponse.getString("image_url") else null
+                        val rawUploaded = if (jsonResponse.has("image_url")) jsonResponse.getString("image_url") else null
+                        profileImageUrl = ImageHelper.normalizeImageUrl(rawUploaded) ?: profileImageUrl
                     } else {
-                        Toast.makeText(applicationContext, jsonResponse.optString("error", "Upload failed"), Toast.LENGTH_LONG).show()
+                        Toast.makeText(applicationContext, jsonResponse.optString("error", jsonResponse.optString("message", "Upload failed")), Toast.LENGTH_LONG).show()
                     }
                 } catch (e: JSONException) {
                     Toast.makeText(applicationContext, "Error parsing JSON: ${e.message}", Toast.LENGTH_LONG).show()
@@ -307,45 +312,17 @@ fun PatientEditProfileScreen(
             Box(
                 modifier = Modifier
                     .size(110.dp)
-                    .clip(CircleShape)
-                    .clickable { onPickImage() }
+                    .clickable { onPickImage() },
+                contentAlignment = Alignment.Center
             ) {
-                if (!profileImageUrl.isNullOrEmpty()) {
-                    AndroidView(
-                        factory = { context ->
-                            android.widget.ImageView(context).apply {
-                                layoutParams = android.view.ViewGroup.LayoutParams(
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                            }
-                        },
-                        update = { imageView ->
-                            Glide.with(imageView.context)
-                                .load(profileImageUrl)
-                                .apply(RequestOptions.circleCropTransform())
-                                .placeholder(R.drawable.icon_profile)
-                                .error(R.drawable.icon_profile)
-                                .into(imageView)
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFFE2E8F0)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(50.dp)
-                        )
-                    }
-                }
+                ProfileAvatar(
+                    imageUrl = profileImageUrl,
+                    name = username,
+                    size = 110.dp,
+                    borderWidth = 3.dp,
+                    borderColor = PcosPrimaryPink,
+                    onClick = onPickImage
+                )
 
                 // Camera icon overlay
                 Box(
